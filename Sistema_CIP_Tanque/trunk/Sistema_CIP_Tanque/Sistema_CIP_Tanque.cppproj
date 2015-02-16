@@ -38,6 +38,10 @@
   </dependencies>
 </framework-data>
     </AsfFrameworkConfig>
+    <SccProjectName>Svn</SccProjectName>
+    <SccProvider>SubversionScc</SccProvider>
+    <SccAuxPath>Svn</SccAuxPath>
+    <SccLocalPath>Svn</SccLocalPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <ToolchainSettings>
@@ -92,7 +96,13 @@
       <Value>DEBUG</Value>
     </ListValues>
   </avrgcc.compiler.symbols.DefSymbols>
-  <avrgcc.compiler.optimization.level>Optimize (-O1)</avrgcc.compiler.optimization.level>
+  <avrgcc.compiler.directories.IncludePaths>
+    <ListValues>
+      <Value>C:\Users\Bruno\Documents\Atmel Studio\ArduinoCore</Value>
+      <Value>C:\Users\Bruno\Documents\Atmel Studio\Libreria_Arduino\LiquidCrystal</Value>
+    </ListValues>
+  </avrgcc.compiler.directories.IncludePaths>
+  <avrgcc.compiler.optimization.level>Optimize for size (-Os)</avrgcc.compiler.optimization.level>
   <avrgcc.compiler.optimization.PackStructureMembers>True</avrgcc.compiler.optimization.PackStructureMembers>
   <avrgcc.compiler.optimization.AllocateBytesNeededForEnum>True</avrgcc.compiler.optimization.AllocateBytesNeededForEnum>
   <avrgcc.compiler.optimization.DebugLevel>Default (-g2)</avrgcc.compiler.optimization.DebugLevel>
@@ -104,21 +114,36 @@
       <Value>DEBUG</Value>
     </ListValues>
   </avrgcccpp.compiler.symbols.DefSymbols>
-  <avrgcccpp.compiler.optimization.level>Optimize (-O1)</avrgcccpp.compiler.optimization.level>
+  <avrgcccpp.compiler.directories.IncludePaths>
+    <ListValues>
+      <Value>C:\Users\Bruno\Documents\Atmel Studio\ArduinoCore</Value>
+      <Value>C:\Users\Bruno\Documents\Atmel Studio\Libreria_Arduino\LiquidCrystal</Value>
+    </ListValues>
+  </avrgcccpp.compiler.directories.IncludePaths>
+  <avrgcccpp.compiler.optimization.level>Optimize for size (-Os)</avrgcccpp.compiler.optimization.level>
   <avrgcccpp.compiler.optimization.PackStructureMembers>True</avrgcccpp.compiler.optimization.PackStructureMembers>
   <avrgcccpp.compiler.optimization.AllocateBytesNeededForEnum>True</avrgcccpp.compiler.optimization.AllocateBytesNeededForEnum>
   <avrgcccpp.compiler.optimization.DebugLevel>Default (-g2)</avrgcccpp.compiler.optimization.DebugLevel>
   <avrgcccpp.compiler.warnings.AllWarnings>True</avrgcccpp.compiler.warnings.AllWarnings>
   <avrgcccpp.linker.libraries.Libraries>
     <ListValues>
+      <Value>libcore</Value>
       <Value>libm</Value>
     </ListValues>
   </avrgcccpp.linker.libraries.Libraries>
+  <avrgcccpp.linker.libraries.LibrarySearchPaths>
+    <ListValues>
+      <Value>C:\Users\Bruno\Documents\Atmel Studio\ArduinoCore</Value>
+    </ListValues>
+  </avrgcccpp.linker.libraries.LibrarySearchPaths>
   <avrgcccpp.assembler.debugging.DebugLevel>Default (-Wa,-g)</avrgcccpp.assembler.debugging.DebugLevel>
 </AvrGccCpp>
     </ToolchainSettings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="LiquidCrystal.cpp">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="Sistema_CIP_Tanque.cpp">
       <SubType>compile</SubType>
     </Compile>
