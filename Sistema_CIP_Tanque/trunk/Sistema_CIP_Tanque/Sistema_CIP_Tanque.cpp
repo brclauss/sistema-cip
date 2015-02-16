@@ -14,14 +14,39 @@ Change History:
 Rev   Date         Description
 ---   ----------   ---------------
 1.0   16/02/2015   Initial release
+1.1   16/02/2015   Fuciones de hardware, inicializaciones, esquema general.
 
 *************************************/
 
 #define F_CPU	16000000
 #define ARDUINO	106
+
+// Includes
 #include "Arduino.h"
 #include "LiquidCrystal.h"
 
+// Constantes y defines
+// Entradas digitales
+const int I0 = A1;
+const int I1 = A2;
+const int I2 = A3;
+const int I3 = A4;
+const int I4 = A5;
+const int I5 = 0;
+
+// Salidas digitales
+const int Q_Agua_Fria = 1;
+const int Q_Bomba_Agitador = 2;
+const int Q_Desague = 3;
+const int Q_Agua_Caliente = 11;
+
+// Etapas del proceso
+const int Descarga_Manual =	1;
+const int Carga_Agua_Fria = 2;
+const int Enjuague = 3;
+const int Descarga_Agua = 4;
+const int Carga_Agua_Caliente = 5;
+const int Lavado = 6;
 
 // Seleccione los pines utilizados en el LCD
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
@@ -37,71 +62,147 @@ int adc_key_in  = 0;
 #define btnNONE   5
 
 // Prototipos de funciones
+void ini_in_out(void);		// Inicializa las entradas y salidas
+void leer_in(void);			// Lee y almacena todas las entradas digitales
+void escribir_outs(void);	// Escribe todas las salidas digitales
+void apagar_outs(void);		// Apaga todas las salidas
 int read_LCD_buttons();		// Leer botones
 
-
-
+// Variables de programa
+unsigned char UC_Etapa = 0;
+byte I_Inicio_Parada, I_Nivel, I_Bomba_Agitador, I_Desague_Manual, I_Llave_Tanque, I_Lav_Auto;
+byte M_Agua_Fria, M_Bomba_Agitador, M_Desague, M_Agua_Caliente;
+byte M_En_Ciclo = 0;
+byte M_En_Alarma = 0;
+byte M_En_Espera = 0;
+// byte M_Latch_Inicio = 0;
 
 void setup()
 {
-	lcd.begin(16,2);              // start the library
-	lcd.setCursor(0,0);
-	lcd.print("Salida Entrada  "); // print a simple message
-
-	pinMode(A1,OUTPUT);
-	pinMode(A2,INPUT);
+	lcd.begin(16,2);              // Start the library
+	lcd.clear();
+	lcd.print("LCD listo...    ");
+	ini_in_out();
+	lcd.clear();
+	lcd.print("In/Out listo... ");
+	lcd.clear();
 }
 
 void loop()
-{
-	lcd.setCursor(10,1);            // move to the begining of the second line
-	lcd_key = read_LCD_buttons();  // read the buttons
-
-	switch (lcd_key)               // depending on which button was pushed, we perform an action
+{	
+	leer_in();
+	if(I_Inicio_Parada == 1)
 	{
-		case btnRIGHT:
+		if(M_En_Alarma == 0)
 		{
-			lcd.print("RIGHT ");
+			M_En_Ciclo = 1;
+			UC_Etapa = Carga_Agua_Fria;
+		}
+	}
+	if((I_Desague_Manual == 1) && (M_En_Ciclo == 0) && (M_En_Alarma == 0) && (I_Llave_Tanque == 1))
+	{
+		M_Desague = 1;
+	}
+	else
+	{
+		M_Desague = 0;
+	}
+	
+	
+	switch (UC_Etapa)
+	{
+		case Descarga_Manual:
+		{
+			
 			break;
 		}
-		case btnLEFT:
+		case Carga_Agua_Fria:
 		{
-			lcd.print("LEFT   ");
+			
 			break;
 		}
-		case btnUP:
+		case Enjuague:
 		{
-			lcd.print("UP    ");
+			
 			break;
 		}
-		case btnDOWN:
+		case Descarga_Agua:
 		{
-			lcd.print("DOWN  ");
+			
 			break;
 		}
-		case btnSELECT:
+		case Carga_Agua_Caliente:
 		{
-			lcd.print("SELECT");
+			
 			break;
 		}
-		case btnNONE:
+		case Lavado:
 		{
-			lcd.print("NONE  ");
+			
+			break;
+		}
+		default:
+		{
+			if(M_En_Espera == 0)
+			{
+				lcd.print("EN ESPERA...    ");
+				M_En_Espera = 1;
+			}
 			break;
 		}
 	}
-	//lcd.print(millis()/1000);      // display seconds elapsed since power-up
-	digitalWrite(A1, HIGH);   // turn the LED on (HIGH is the voltage level)
-	lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
-	lcd.print("HIGH");
-	delay(500);              // wait for a second
-	digitalWrite(A1, LOW);    // turn the LED off by making the voltage LOW
-	lcd.setCursor(0,1);
-	lcd.print("LOW ");
-	delay(500);              // wait for a second
-	lcd.setCursor(7,1);            // move cursor to second line "1" and 0 spaces over
-	lcd.print(digitalRead(A2));
+	escribir_outs();
+}
+
+// Inicializa entradas y salidas
+void ini_in_out(void)
+{
+	// Entradas
+	pinMode(I0, INPUT);
+	pinMode(I1, INPUT);
+	pinMode(I2, INPUT);
+	pinMode(I3, INPUT);
+	pinMode(I4, INPUT);
+	pinMode(I5, INPUT);
 	
+	// Salidas
+	pinMode(Q_Agua_Fria, OUTPUT);
+	pinMode(Q_Bomba_Agitador, OUTPUT);
+	pinMode(Q_Desague, OUTPUT);
+	pinMode(Q_Agua_Caliente, OUTPUT);
+	return;
+}
+
+// Lee las entradas y almacena el estado de las mismas
+void leer_in(void)
+{
+	I_Inicio_Parada = digitalRead(I0);
+	I_Nivel = digitalRead(I1);
+	I_Bomba_Agitador = digitalRead(I2);
+	I_Desague_Manual = digitalRead(I3);
+	I_Llave_Tanque = digitalRead(I4);
+	I_Lav_Auto = digitalRead(I5);
+	return;
+}
+
+// Escribe las salidas
+void escribir_outs(void)
+{
+	digitalWrite(Q_Agua_Fria, M_Agua_Fria);
+	digitalWrite(Q_Bomba_Agitador, M_Bomba_Agitador);
+	digitalWrite(Q_Desague, M_Desague);
+	digitalWrite(Q_Agua_Caliente, M_Agua_Caliente);
+	return;
+}
+
+//  Apaga todas las salidas
+void apagar_outs(void)
+{
+	digitalWrite(Q_Agua_Fria, LOW);
+	digitalWrite(Q_Bomba_Agitador, LOW);
+	digitalWrite(Q_Desague, LOW);
+	digitalWrite(Q_Agua_Caliente, LOW);
+	return;
 }
 
 // Read the buttons
@@ -131,5 +232,3 @@ int read_LCD_buttons()
 
 	return btnNONE;  // when all others fail, return this...
 }
-
-
