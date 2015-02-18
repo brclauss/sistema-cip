@@ -15,6 +15,7 @@ Rev   Date         Description
 ---   ----------   ---------------
 1.0   16/02/2015   Initial release
 1.1   16/02/2015   Fuciones de hardware, inicializaciones, esquema general.
+1.2	  17/02/2015   Función temporizador
 
 *************************************/
 
@@ -67,6 +68,7 @@ void leer_in(void);			// Lee y almacena todas las entradas digitales
 void escribir_outs(void);	// Escribe todas las salidas digitales
 void apagar_outs(void);		// Apaga todas las salidas
 int read_LCD_buttons();		// Leer botones
+unsigned int timerPulse(unsigned long &timerState, unsigned long timerPeriod);	// Temporizador
 
 // Variables de programa
 unsigned char UC_Etapa = 0;
@@ -75,6 +77,7 @@ byte M_Agua_Fria, M_Bomba_Agitador, M_Desague, M_Agua_Caliente;
 byte M_En_Ciclo = 0;
 byte M_En_Alarma = 0;
 byte M_En_Espera = 0;
+unsigned int scanValue = 0;			// En libreria tiene que ser "extern"
 // byte M_Latch_Inicio = 0;
 
 void setup()
@@ -203,6 +206,36 @@ void apagar_outs(void)
 	digitalWrite(Q_Desague, LOW);
 	digitalWrite(Q_Agua_Caliente, LOW);
 	return;
+}
+
+unsigned int timerPulse(unsigned long &timerState, unsigned long timerPeriod)
+{
+	if ((scanValue == 0) & (timerState == 0))					// Timer is either not triggered or finished
+	{														
+		timerState = 0;										// Clear timerState (0 = 'not started')
+	}
+	else                                                    // Timer is enabled
+	{														
+		if (timerState == 0)								// Timer hasn't started counting yet
+		{													
+			timerState = millis();							// Set timerState to current time in milliseconds
+			scanValue = 0;									// Result = 'not finished' (0)
+		}
+		else                                                // Timer is active and counting
+		{												
+			if (millis() > (timerState + timerPeriod))		// Timer has finished
+			{	
+				scanValue = 0;								// Pulse = 'finished' (0)
+				timerState = 0;
+			}
+			else
+			{												// Timer has not finished
+				scanValue = 1;								// Pulse = 'Active' (1)
+			}
+		}
+	}
+	return(scanValue);										// Return result (1 = 'finished',
+															// 0 = 'not started' / 'not finished')
 }
 
 // Read the buttons
