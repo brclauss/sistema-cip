@@ -15,7 +15,7 @@ Rev   Date         Description
 ---   ----------   ---------------
 1.0   16/02/2015   Initial release
 1.1   16/02/2015   Fuciones de hardware, inicializaciones, esquema general.
-1.2	  17/02/2015   Función temporizador
+1.2   17/02/2015   Función temporizador
 
 *************************************/
 
@@ -28,12 +28,12 @@ Rev   Date         Description
 
 // Constantes y defines
 // Entradas digitales
-const int I0 = A1;
-const int I1 = A2;
-const int I2 = A3;
-const int I3 = A4;
-const int I4 = A5;
-const int I5 = 0;
+#define I0 A1
+#define I1 A2
+#define I2 A3
+#define I3 A4
+#define I4 A5
+#define I5 0
 
 // Salidas digitales
 const int Q_Agua_Fria = 1;
@@ -42,6 +42,7 @@ const int Q_Desague = 3;
 const int Q_Agua_Caliente = 11;
 
 // Etapas del proceso
+const int En_Espera = 0;
 const int Descarga_Manual =	1;
 const int Carga_Agua_Fria = 2;
 const int Enjuague = 3;
@@ -70,13 +71,14 @@ void apagar_outs(void);		// Apaga todas las salidas
 int read_LCD_buttons();		// Leer botones
 unsigned int timerPulse(unsigned long &timerState, unsigned long timerPeriod);	// Temporizador
 
+
 // Variables de programa
 unsigned char UC_Etapa = 0;
 byte I_Inicio_Parada, I_Nivel, I_Bomba_Agitador, I_Desague_Manual, I_Llave_Tanque, I_Lav_Auto;
-byte M_Agua_Fria, M_Bomba_Agitador, M_Desague, M_Agua_Caliente;
+boolean M_Agua_Fria, M_Bomba_Agitador, M_Desague, M_Agua_Caliente;
 byte M_En_Ciclo = 0;
 byte M_En_Alarma = 0;
-byte M_En_Espera = 0;
+byte M_En_Espera = 10;
 unsigned int scanValue = 0;			// En libreria tiene que ser "extern"
 // byte M_Latch_Inicio = 0;
 
@@ -93,30 +95,39 @@ void setup()
 
 void loop()
 {	
-	leer_in();
-	if(I_Inicio_Parada == 1)
+	leer_in();							// Lee todas las entradas digitales y almacena su valor
+	// Inicio inicio de ciclo
+	if((I_Inicio_Parada == 1) && (M_En_Alarma == 0))	// Condición para iniciar el ciclo de lavado
 	{
-		if(M_En_Alarma == 0)
-		{
-			M_En_Ciclo = 1;
-			UC_Etapa = Carga_Agua_Fria;
-		}
+		M_En_Ciclo = 1;
+		UC_Etapa = Carga_Agua_Fria;		// Etapa carga de agua fria
+		
 	}
+	// Fin inicio de ciclo
+	
+	// Inicio descarga manual
 	if((I_Desague_Manual == 1) && (M_En_Ciclo == 0) && (M_En_Alarma == 0) && (I_Llave_Tanque == 1))
 	{
 		M_Desague = 1;
+		UC_Etapa = Descarga_Manual;		// Etapa descarga manual
 	}
 	else
 	{
 		M_Desague = 0;
+		UC_Etapa = En_Espera;		// Etapa en espera
 	}
-	
+	// Fin descarga manual
 	
 	switch (UC_Etapa)
 	{
 		case Descarga_Manual:
 		{
-			
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("DESCARGANDO...  ");
+				M_En_Espera = UC_Etapa;
+			}
 			break;
 		}
 		case Carga_Agua_Fria:
@@ -146,15 +157,16 @@ void loop()
 		}
 		default:
 		{
-			if(M_En_Espera == 0)
+			if(M_En_Espera != UC_Etapa)
 			{
+				lcd.clear();
 				lcd.print("EN ESPERA...    ");
-				M_En_Espera = 1;
+				M_En_Espera = UC_Etapa;
 			}
 			break;
 		}
 	}
-	escribir_outs();
+	escribir_outs();	// Actualiza el valor de las salidas digitales
 }
 
 // Inicializa entradas y salidas
