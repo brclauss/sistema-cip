@@ -16,6 +16,7 @@ Rev   Date         Description
 1.0   16/02/2015   Initial release
 1.1   16/02/2015   Fuciones de hardware, inicializaciones, esquema general.
 1.2   17/02/2015   Función temporizador
+1.3   18/03/2015   Comienzo Grafcet
 
 *************************************/
 
@@ -33,22 +34,25 @@ Rev   Date         Description
 #define I2 A3
 #define I3 A4
 #define I4 A5
-#define I5 0
+#define I5 2
 
 // Salidas digitales
-const int Q_Agua_Fria = 1;
-const int Q_Bomba_Agitador = 2;
-const int Q_Desague = 3;
-const int Q_Agua_Caliente = 11;
+const int Q_Agua_Fria = 3;
+const int Q_Bomba_Agitador = 11;
+const int Q_Desague = 12;
+const int Q_Agua_Caliente = 13;
 
 // Etapas del proceso
 const int En_Espera = 0;
-const int Descarga_Manual =	1;
-const int Carga_Agua_Fria = 2;
-const int Enjuague = 3;
-const int Descarga_Agua = 4;
-const int Carga_Agua_Caliente = 5;
-const int Lavado = 6;
+const int Descarga_Manual =	11;
+const int Carga_Agua_Fria = 1;
+const int Enjuague = 2;
+const int Descarga_Agua = 3;
+const int Carga_Agua_Caliente = 4;
+const int Lavado = 5;
+
+// Timers en ms
+const int T_Enjuague = 5000;
 
 // Seleccione los pines utilizados en el LCD
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
@@ -79,7 +83,10 @@ boolean M_Agua_Fria, M_Bomba_Agitador, M_Desague, M_Agua_Caliente;
 byte M_En_Ciclo = 0;
 byte M_En_Alarma = 0;
 byte M_En_Espera = 10;
+byte M_Activar_Timer = 0;
 unsigned int scanValue = 0;			// En libreria tiene que ser "extern"
+unsigned long TIMER0 = 0;  // Variable to hold elapsed time for Timer 0
+unsigned long TIMER1 = 0;  // Variable to hold elapsed time for Timer 1
 // byte M_Latch_Inicio = 0;
 
 void setup()
@@ -87,21 +94,92 @@ void setup()
 	lcd.begin(16,2);              // Start the library
 	lcd.clear();
 	lcd.print("LCD listo...    ");
+	delay(1000);
 	ini_in_out();
 	lcd.clear();
 	lcd.print("In/Out listo... ");
+	delay(1000);
 	lcd.clear();
 }
 
 void loop()
 {	
 	leer_in();							// Lee todas las entradas digitales y almacena su valor
+	
+	// Cambios de etapa
+	// Etapa 11
+	if (UC_Etapa == 0 && I_Llave_Tanque == 1 && I_Desague_Manual == 1)
+	{
+		UC_Etapa = 11;
+ 	}
+	// Etapa 0
+	if (UC_Etapa == 11 && I_Desague_Manual == 0)
+	{
+		UC_Etapa = 0;
+	}
+	// Etapa 1
+	if (UC_Etapa == 0 && I_Llave_Tanque == 1 && I_Inicio_Parada == 1)
+	{
+		UC_Etapa = 1;
+	}
+	// Etapa 2
+	if (UC_Etapa == 1 && I_Nivel == 1)
+	{
+		UC_Etapa = 2;
+	}
+	// Etapa 3
+	if (UC_Etapa == 2 && scanValue == 1)
+	{
+		UC_Etapa = 3;
+	}
+	
+	// Acciones de cada etapa
+	// Espera
+	if (UC_Etapa == 0)
+	{
+		apagar_outs();
+	}
+	// Descarga manual
+	if(UC_Etapa == 11)
+	{
+		M_Desague = 1;
+	}
+	// Etapa 1
+	if (UC_Etapa == 1)
+	{
+		M_Agua_Fria = 1;
+	}
+	// Etapa 2
+	if (UC_Etapa == 2)
+	{
+		M_Agua_Fria = 0;
+		M_Bomba_Agitador = 1;
+		if (M_Activar_Timer != UC_Etapa)
+		{
+			scanValue = 1;
+			M_Activar_Timer = UC_Etapa;
+		}
+		timerPulse(TIMER1,T_Enjuague);
+	}
+	// Etapa 3
+	if (UC_Etapa == 3)
+	{
+		M_Bomba_Agitador = 0;
+		M_Desague = 1;
+	}
+	
+	/*
 	// Inicio inicio de ciclo
-	if((I_Inicio_Parada == 1) && (M_En_Alarma == 0))	// Condición para iniciar el ciclo de lavado
+	if((I_Inicio_Parada == 1) && (M_En_Alarma == 0) && (I_Llave_Tanque == 1))	// Condición para iniciar el ciclo de lavado
 	{
 		M_En_Ciclo = 1;
+		M_Agua_Fria = 1;
 		UC_Etapa = Carga_Agua_Fria;		// Etapa carga de agua fria
-		
+	}
+	else
+	{
+		M_Agua_Fria = 0;
+		UC_Etapa = En_Espera;		// Etapa en espera
 	}
 	// Fin inicio de ciclo
 	
@@ -117,10 +195,42 @@ void loop()
 		UC_Etapa = En_Espera;		// Etapa en espera
 	}
 	// Fin descarga manual
+	*/
 	
+	// Impresión en pantalla
 	switch (UC_Etapa)
 	{
 		case Descarga_Manual:
+		{
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("DESC. MANUAL... ");
+				M_En_Espera = UC_Etapa;
+			}
+			break;
+		}
+		case Carga_Agua_Fria:
+		{
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("CARGANDO FRIA...");
+				M_En_Espera = UC_Etapa;
+			}
+			break;
+		}
+		case Enjuague:
+		{
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("ENJUAGUE...     ");
+				M_En_Espera = UC_Etapa;
+			}			
+			break;
+		}
+		case Descarga_Agua:
 		{
 			if(M_En_Espera != UC_Etapa)
 			{
@@ -130,32 +240,27 @@ void loop()
 			}
 			break;
 		}
-		case Carga_Agua_Fria:
-		{
-			
-			break;
-		}
-		case Enjuague:
-		{
-			
-			break;
-		}
-		case Descarga_Agua:
-		{
-			
-			break;
-		}
 		case Carga_Agua_Caliente:
 		{
-			
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("CARGANDO CAL... ");
+				M_En_Espera = UC_Etapa;
+			}
 			break;
 		}
 		case Lavado:
 		{
-			
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("LAVANDO...      ");
+				M_En_Espera = UC_Etapa;
+			}
 			break;
 		}
-		default:
+		case En_Espera:
 		{
 			if(M_En_Espera != UC_Etapa)
 			{
@@ -166,6 +271,7 @@ void loop()
 			break;
 		}
 	}
+	
 	escribir_outs();	// Actualiza el valor de las salidas digitales
 }
 
@@ -213,10 +319,15 @@ void escribir_outs(void)
 //  Apaga todas las salidas
 void apagar_outs(void)
 {
-	digitalWrite(Q_Agua_Fria, LOW);
-	digitalWrite(Q_Bomba_Agitador, LOW);
-	digitalWrite(Q_Desague, LOW);
-	digitalWrite(Q_Agua_Caliente, LOW);
+	M_Agua_Fria = 0;
+	M_Bomba_Agitador = 0;
+	M_Desague = 0;
+	M_Agua_Caliente = 0;
+	
+	// digitalWrite(Q_Agua_Fria, LOW);
+	// digitalWrite(Q_Bomba_Agitador, LOW);
+	// digitalWrite(Q_Desague, LOW);
+	// digitalWrite(Q_Agua_Caliente, LOW);
 	return;
 }
 
