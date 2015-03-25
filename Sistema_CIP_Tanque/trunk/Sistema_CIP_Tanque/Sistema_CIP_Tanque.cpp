@@ -13,10 +13,12 @@ File Description:
 Change History:
 Rev   Date         Description
 ---   ----------   ---------------
-1.0   16/02/2015   Initial release
+1.0   16/02/2015   Initial release.
 1.1   16/02/2015   Fuciones de hardware, inicializaciones, esquema general.
-1.2   17/02/2015   Función temporizador
-1.3   18/03/2015   Comienzo Grafcet
+1.2   17/02/2015   Función temporizador.
+1.3   18/03/2015   Comienzo Grafcet.
+1.4   23/03/2015   Corrección función temporizador, implementación de etapas basicas.
+1.5   24/03/2015   Completaron etapas y alarmas.
 
 *************************************/
 
@@ -45,14 +47,22 @@ const int Q_Agua_Caliente = 13;
 // Etapas del proceso
 const int En_Espera = 0;
 const int Descarga_Manual =	11;
-const int Carga_Agua_Fria = 1;
-const int Enjuague = 2;
-const int Descarga_Agua = 3;
+const int Carga_Agua_Fria_1 = 1;
+const int Enjuague_1 = 2;
+const int Descarga_Agua_1 = 3;
 const int Carga_Agua_Caliente = 4;
 const int Lavado = 5;
+const int Descarga_Agua_2 = 6;
+const int Carga_Agua_Fria_2 = 7;
+const int Enjuague_2 = 8;
+const int Descarga_Agua_3 = 9;
+const int Alarma_Bomba_Agit = 12;
+const int Alarma_Llave_T = 13;
 
 // Timers en ms
-const int T_Enjuague = 5000;
+const unsigned long T_Enjuague = 5000;
+const unsigned long T_Descarga = 10000;
+const unsigned long T_Lavado = 20000;
 
 // Seleccione los pines utilizados en el LCD
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
@@ -73,8 +83,8 @@ void leer_in(void);			// Lee y almacena todas las entradas digitales
 void escribir_outs(void);	// Escribe todas las salidas digitales
 void apagar_outs(void);		// Apaga todas las salidas
 int read_LCD_buttons();		// Leer botones
-unsigned int timerPulse(unsigned long &timerState, unsigned long timerPeriod);	// Temporizador
-
+unsigned long timerPulse(boolean &timeractive, unsigned long &timeactual, unsigned long &timerState, unsigned long timerPeriod);	// Temporizador
+void vigia(void);
 
 // Variables de programa
 unsigned char UC_Etapa = 0;
@@ -84,9 +94,18 @@ byte M_En_Ciclo = 0;
 byte M_En_Alarma = 0;
 byte M_En_Espera = 10;
 byte M_Activar_Timer = 0;
-unsigned int scanValue = 0;			// En libreria tiene que ser "extern"
-unsigned long TIMER0 = 0;  // Variable to hold elapsed time for Timer 0
-unsigned long TIMER1 = 0;  // Variable to hold elapsed time for Timer 1
+//unsigned int scanValue = 0;			// En libreria tiene que ser "extern"
+// Variables para Timer
+boolean M_Timer_1 = 0;
+boolean M_Timer_2 = 0;
+boolean M_Timer_3 = 0;
+unsigned long M_Time_1 = 0;
+unsigned long M_Time_2 = 0;
+unsigned long M_Time_3 = 0;
+unsigned long TIMER_00 = 0;  // Variable to hold elapsed time for Timer 0
+unsigned long TIMER_01 = 0;  // Variable to hold elapsed time for Timer 1
+unsigned long TIMER_02 = 0;  // Variable to hold elapsed time for Timer 2
+unsigned long TIMER_03 = 0;  // Variable to hold elapsed time for Timer 3
 // byte M_Latch_Inicio = 0;
 
 void setup()
@@ -107,20 +126,11 @@ void loop()
 	leer_in();							// Lee todas las entradas digitales y almacena su valor
 	
 	// Cambios de etapa
-	// Etapa 11
-	if (UC_Etapa == 0 && I_Llave_Tanque == 1 && I_Desague_Manual == 1)
-	{
-		UC_Etapa = 11;
- 	}
-	// Etapa 0
-	if (UC_Etapa == 11 && I_Desague_Manual == 0)
-	{
-		UC_Etapa = 0;
-	}
 	// Etapa 1
 	if (UC_Etapa == 0 && I_Llave_Tanque == 1 && I_Inicio_Parada == 1)
 	{
 		UC_Etapa = 1;
+		M_En_Ciclo = 1;
 	}
 	// Etapa 2
 	if (UC_Etapa == 1 && I_Nivel == 1)
@@ -128,9 +138,58 @@ void loop()
 		UC_Etapa = 2;
 	}
 	// Etapa 3
-	if (UC_Etapa == 2 && scanValue == 1)
+	if (UC_Etapa == 2 && M_Timer_1 == 1)
 	{
 		UC_Etapa = 3;
+	}
+	// Etapa 4
+	if (UC_Etapa == 3 && M_Timer_2 == 1)
+	{
+		UC_Etapa = 4;
+	}
+	// Etapa 5
+	if (UC_Etapa == 4 && I_Nivel == 1)
+	{
+		UC_Etapa = 5;
+	}
+	// Etapa 6
+	if (UC_Etapa == 5 && M_Timer_3 == 1)
+	{
+		UC_Etapa = 6;
+	}
+	// Etapa 7
+	if (UC_Etapa == 6 && M_Timer_2 == 1)
+	{
+		UC_Etapa = 7;
+	}
+	// Etapa 8
+	if (UC_Etapa == 7 && I_Nivel == 1)
+	{
+		UC_Etapa = 8;
+	}
+	// Etapa 9
+	if (UC_Etapa == 8 && M_Timer_1 == 1)
+	{
+		UC_Etapa = 9;
+	}
+	// Etapa final
+	if (UC_Etapa == 9 && M_Timer_2 == 1)
+	{
+		M_Timer_2 = 0;
+		UC_Etapa = 0;
+		M_En_Ciclo = 0;
+	}
+	
+	// Etapas especiales
+	// Etapa 11
+	if (UC_Etapa == 0 && I_Llave_Tanque == 1 && I_Desague_Manual == 1)
+	{
+		UC_Etapa = 11;
+	}
+	// Etapa 0
+	if (UC_Etapa == 11 && I_Desague_Manual == 0)
+	{
+		UC_Etapa = 0;
 	}
 	
 	// Acciones de cada etapa
@@ -147,6 +206,7 @@ void loop()
 	// Etapa 1
 	if (UC_Etapa == 1)
 	{
+		M_Desague = 0;
 		M_Agua_Fria = 1;
 	}
 	// Etapa 2
@@ -156,47 +216,90 @@ void loop()
 		M_Bomba_Agitador = 1;
 		if (M_Activar_Timer != UC_Etapa)
 		{
-			scanValue = 1;
+			M_Timer_1 = 1;
 			M_Activar_Timer = UC_Etapa;
 		}
-		timerPulse(TIMER1,T_Enjuague);
+		timerPulse(M_Timer_1, M_Time_1, TIMER_01, T_Enjuague);
 	}
 	// Etapa 3
 	if (UC_Etapa == 3)
 	{
+		M_Timer_1 = 0;
 		M_Bomba_Agitador = 0;
 		M_Desague = 1;
+		if (M_Activar_Timer != UC_Etapa)
+		{
+			M_Timer_2 = 1;
+			M_Activar_Timer = UC_Etapa;
+		}
+		timerPulse(M_Timer_2, M_Time_2, TIMER_02, T_Descarga);
 	}
-	
-	/*
-	// Inicio inicio de ciclo
-	if((I_Inicio_Parada == 1) && (M_En_Alarma == 0) && (I_Llave_Tanque == 1))	// Condición para iniciar el ciclo de lavado
+	// Etapa 4
+	if (UC_Etapa == 4)
 	{
-		M_En_Ciclo = 1;
-		M_Agua_Fria = 1;
-		UC_Etapa = Carga_Agua_Fria;		// Etapa carga de agua fria
+		M_Timer_2 = 0;
+		M_Desague = 0;
+		M_Agua_Caliente = 1;
 	}
-	else
+	// Etapa 5
+	if (UC_Etapa == 5)
+	{
+		M_Agua_Caliente = 0;
+		M_Bomba_Agitador = 1;
+		if (M_Activar_Timer != UC_Etapa)
+		{
+			M_Timer_3 = 1;
+			M_Activar_Timer = UC_Etapa;
+		}
+		timerPulse(M_Timer_3, M_Time_3, TIMER_03, T_Lavado);
+	}
+	// Etapa 6
+	if (UC_Etapa == 6)
+	{
+		M_Timer_3 = 0;
+		M_Bomba_Agitador = 0;
+		M_Desague = 1;
+		if (M_Activar_Timer != UC_Etapa)
+		{
+			M_Timer_2 = 1;
+			M_Activar_Timer = UC_Etapa;
+		}
+		timerPulse(M_Timer_2, M_Time_2, TIMER_02, T_Descarga);
+	}
+	// Etapa 7
+	if (UC_Etapa == 7)
+	{
+		M_Timer_2 = 0;
+		M_Desague = 0;
+		M_Agua_Fria = 1;
+	}
+	// Etapa 8
+	if (UC_Etapa == 8)
 	{
 		M_Agua_Fria = 0;
-		UC_Etapa = En_Espera;		// Etapa en espera
+		M_Bomba_Agitador = 1;
+		if (M_Activar_Timer != UC_Etapa)
+		{
+			M_Timer_1 = 1;
+			M_Activar_Timer = UC_Etapa;
+		}
+		timerPulse(M_Timer_1, M_Time_1, TIMER_01, T_Enjuague);
 	}
-	// Fin inicio de ciclo
-	
-	// Inicio descarga manual
-	if((I_Desague_Manual == 1) && (M_En_Ciclo == 0) && (M_En_Alarma == 0) && (I_Llave_Tanque == 1))
+	// Etapa 9
+	if (UC_Etapa == 9)
 	{
+		M_Timer_1 = 0;
+		M_Bomba_Agitador = 0;
 		M_Desague = 1;
-		UC_Etapa = Descarga_Manual;		// Etapa descarga manual
+		if (M_Activar_Timer != UC_Etapa)
+		{
+			M_Timer_2 = 1;
+			M_Activar_Timer = UC_Etapa;
+		}
+		timerPulse(M_Timer_2, M_Time_2, TIMER_02, T_Descarga);
 	}
-	else
-	{
-		M_Desague = 0;
-		UC_Etapa = En_Espera;		// Etapa en espera
-	}
-	// Fin descarga manual
-	*/
 	
+		
 	// Impresión en pantalla
 	switch (UC_Etapa)
 	{
@@ -210,7 +313,7 @@ void loop()
 			}
 			break;
 		}
-		case Carga_Agua_Fria:
+		case Carga_Agua_Fria_1:
 		{
 			if(M_En_Espera != UC_Etapa)
 			{
@@ -220,24 +323,33 @@ void loop()
 			}
 			break;
 		}
-		case Enjuague:
+		case Enjuague_1:
 		{
 			if(M_En_Espera != UC_Etapa)
 			{
 				lcd.clear();
 				lcd.print("ENJUAGUE...     ");
+				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print("TIEMPO [s]:");
 				M_En_Espera = UC_Etapa;
-			}			
+				
+			}
+			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+			lcd.print(M_Time_1);		
 			break;
 		}
-		case Descarga_Agua:
+		case Descarga_Agua_1:
 		{
 			if(M_En_Espera != UC_Etapa)
 			{
 				lcd.clear();
 				lcd.print("DESCARGANDO...  ");
+				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print("TIEMPO [s]:");
 				M_En_Espera = UC_Etapa;
 			}
+			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+			lcd.print(M_Time_2);
 			break;
 		}
 		case Carga_Agua_Caliente:
@@ -256,8 +368,65 @@ void loop()
 			{
 				lcd.clear();
 				lcd.print("LAVANDO...      ");
+				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print("TIEMPO [s]:");
 				M_En_Espera = UC_Etapa;
 			}
+			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+			lcd.print(M_Time_3);
+			break;
+		}
+		case Descarga_Agua_2:
+		{
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("DESCARGANDO...  ");
+				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print("TIEMPO [s]:");
+				M_En_Espera = UC_Etapa;
+			}
+			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+			lcd.print(M_Time_2);
+			break;
+		}
+		case Carga_Agua_Fria_2:
+		{
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("CARGANDO FRIA...");
+				M_En_Espera = UC_Etapa;
+			}
+			break;
+		}
+		case Enjuague_2:
+		{
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("ENJUAGUE...     ");
+				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print("TIEMPO [s]:");
+				M_En_Espera = UC_Etapa;
+				
+			}
+			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+			lcd.print(M_Time_1);
+			break;
+		}
+		case Descarga_Agua_3:
+		{
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("DESCARGANDO...  ");
+				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print("TIEMPO [s]:");
+				M_En_Espera = UC_Etapa;
+			}
+			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+			lcd.print(M_Time_2);
 			break;
 		}
 		case En_Espera:
@@ -270,8 +439,32 @@ void loop()
 			}
 			break;
 		}
+		case Alarma_Bomba_Agit:
+		{
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("ALARMA!!!       ");
+				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print("FALLA BOMBA/AGIT");
+				M_En_Espera = UC_Etapa;
+			}
+			break;
+		}
+		case Alarma_Llave_T:
+		{
+			if(M_En_Espera != UC_Etapa)
+			{
+				lcd.clear();
+				lcd.print("ALARMA!!!       ");
+				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print("LLAVE T. CERRADA");
+				M_En_Espera = UC_Etapa;
+			}
+			break;
+		}
 	}
-	
+	vigia();
 	escribir_outs();	// Actualiza el valor de las salidas digitales
 }
 
@@ -323,42 +516,95 @@ void apagar_outs(void)
 	M_Bomba_Agitador = 0;
 	M_Desague = 0;
 	M_Agua_Caliente = 0;
-	
-	// digitalWrite(Q_Agua_Fria, LOW);
-	// digitalWrite(Q_Bomba_Agitador, LOW);
-	// digitalWrite(Q_Desague, LOW);
-	// digitalWrite(Q_Agua_Caliente, LOW);
 	return;
 }
 
-unsigned int timerPulse(unsigned long &timerState, unsigned long timerPeriod)
+// Temporizador tipo pulso
+unsigned long timerPulse(boolean &timeractive, unsigned long &timeactual, unsigned long &timerState, unsigned long timerPeriod)
 {
-	if ((scanValue == 0) & (timerState == 0))					// Timer is either not triggered or finished
+	if ((timeractive == 0) & (timerState == 0))				// Timer is either not triggered or finished
 	{														
-		timerState = 0;										// Clear timerState (0 = 'not started')
+		timerState = 0;
+		timeactual = 0;										// Clear timerState (0 = 'not started')
 	}
 	else                                                    // Timer is enabled
 	{														
 		if (timerState == 0)								// Timer hasn't started counting yet
 		{													
 			timerState = millis();							// Set timerState to current time in milliseconds
-			scanValue = 0;									// Result = 'not finished' (0)
+			timeractive = 0;
+			timeactual = 0;									// Result = 'not finished' (0)
 		}
 		else                                                // Timer is active and counting
 		{												
 			if (millis() > (timerState + timerPeriod))		// Timer has finished
 			{	
-				scanValue = 0;								// Pulse = 'finished' (0)
+				timeractive = 1;							// Pulse = 'finished' (0)
 				timerState = 0;
 			}
 			else
 			{												// Timer has not finished
-				scanValue = 1;								// Pulse = 'Active' (1)
+				timeractive = 0;							// Pulse = 'Active' (1)
 			}
-		}
+			timeactual = (millis() - timerState) / 1000;
+		}	
 	}
-	return(scanValue);										// Return result (1 = 'finished',
+	return(timeactual);										// Return result (1 = 'finished',
 															// 0 = 'not started' / 'not finished')
+}
+
+// Vigia detección de alarmas
+void vigia(void)
+{
+	if (I_Bomba_Agitador == 1)
+	{
+		M_En_Alarma = 1;
+		UC_Etapa = 12;
+		apagar_outs();
+	}
+	if (UC_Etapa != 0 && I_Llave_Tanque == 0 && M_En_Alarma == 0)
+	{
+		M_En_Alarma = 2;
+		UC_Etapa = 13;
+		apagar_outs();
+	}
+	if (M_En_Alarma == 1 && I_Bomba_Agitador == 0 && UC_Etapa == 12)
+	{
+		UC_Etapa = 0;
+		M_En_Ciclo = 0;
+		M_En_Alarma = 0;
+		M_En_Espera = 10;
+		M_Activar_Timer = 0;
+		M_Timer_1 = 0;
+		M_Timer_2 = 0;
+		M_Timer_3 = 0;
+		M_Time_1 = 0;
+		M_Time_2 = 0;
+		M_Time_3 = 0;
+		TIMER_00 = 0;  // Variable to hold elapsed time for Timer 0
+		TIMER_01 = 0;  // Variable to hold elapsed time for Timer 1
+		TIMER_02 = 0;  // Variable to hold elapsed time for Timer 2
+		TIMER_03 = 0;  // Variable to hold elapsed time for Timer 3
+	}
+	if (M_En_Alarma == 2 && I_Llave_Tanque == 1 && UC_Etapa == 13)
+	{
+		UC_Etapa = 0;
+		M_En_Ciclo = 0;
+		M_En_Alarma = 0;
+		M_En_Espera = 10;
+		M_Activar_Timer = 0;
+		M_Timer_1 = 0;
+		M_Timer_2 = 0;
+		M_Timer_3 = 0;
+		M_Time_1 = 0;
+		M_Time_2 = 0;
+		M_Time_3 = 0;
+		TIMER_00 = 0;  // Variable to hold elapsed time for Timer 0
+		TIMER_01 = 0;  // Variable to hold elapsed time for Timer 1
+		TIMER_02 = 0;  // Variable to hold elapsed time for Timer 2
+		TIMER_03 = 0;  // Variable to hold elapsed time for Timer 3
+	}
+	return;
 }
 
 // Read the buttons
