@@ -19,6 +19,8 @@ Rev   Date         Description
 1.3   18/03/2015   Comienzo Grafcet.
 1.4   23/03/2015   Corrección función temporizador, implementación de etapas basicas.
 1.5   24/03/2015   Completaron etapas y alarmas.
+1.6   29/03/2015   Manejo de teclado, menus, guardar parametros en EEPROM.
+1.7   03/04/2015   Mensaje de fin de ciclo.
 
 *************************************/
 
@@ -28,6 +30,7 @@ Rev   Date         Description
 // Includes
 #include "Arduino.h"
 #include "LiquidCrystal.h"
+#include "EEPROM.h"
 
 // Constantes y defines
 // Entradas digitales
@@ -58,11 +61,16 @@ const int Enjuague_2 = 8;
 const int Descarga_Agua_3 = 9;
 const int Alarma_Bomba_Agit = 12;
 const int Alarma_Llave_T = 13;
+const int Final_Ciclo = 14;
 
 // Timers en ms
-const unsigned long T_Enjuague = 5000;
-const unsigned long T_Descarga = 10000;
-const unsigned long T_Lavado = 20000;
+unsigned long T_Enjuague;
+unsigned long T_Descarga;
+unsigned long T_Lavado;
+const unsigned long T_Rebote = 150;
+unsigned char T_Enjuague_s;
+unsigned char T_Descarga_s;
+unsigned char T_Lavado_s;
 
 // Seleccione los pines utilizados en el LCD
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
@@ -76,6 +84,39 @@ int adc_key_in  = 0;
 #define btnLEFT   3
 #define btnSELECT 4
 #define btnNONE   5
+int aux_key_1 = 0;	// Variable auxiliar para rebote de tecla
+int aux_key_2 = 0;	// Variable auxiliar para rebote de tecla
+
+// Variables de programa
+unsigned char UC_Etapa = 0;
+byte I_Inicio_Parada, I_Nivel, I_Bomba_Agitador, I_Desague_Manual, I_Llave_Tanque, I_Lav_Auto;
+boolean M_Agua_Fria, M_Bomba_Agitador, M_Desague, M_Agua_Caliente;
+byte M_En_Ciclo = 0;
+byte M_En_Alarma = 0;
+byte M_En_Espera = 10;
+byte M_En_Espera_2 = 100;
+byte M_Activar_Timer = 0;
+int M_Activar_Timer_2 = 0;
+
+// Variables para Timer
+boolean M_Timer_1 = 0;
+boolean M_Timer_2 = 0;
+boolean M_Timer_3 = 0;
+boolean M_Timer_4 = 0;
+unsigned long M_Time_1 = 0;
+unsigned long M_Time_2 = 0;
+unsigned long M_Time_3 = 0;
+unsigned long M_Time_4 = 0;
+unsigned long TIMER_00 = 0;  // Variable to hold elapsed time for Timer 0
+unsigned long TIMER_01 = 0;  // Variable to hold elapsed time for Timer 1
+unsigned long TIMER_02 = 0;  // Variable to hold elapsed time for Timer 2
+unsigned long TIMER_03 = 0;  // Variable to hold elapsed time for Timer 3
+unsigned long TIMER_04 = 0;  // Variable to hold elapsed time for Timer 4
+
+// Variables para menu
+byte Modo_Menu = 0;
+byte Pantalla = 0;
+byte Btn_Select = 0;
 
 // Prototipos de funciones
 void ini_in_out(void);		// Inicializa las entradas y salidas
@@ -85,28 +126,8 @@ void apagar_outs(void);		// Apaga todas las salidas
 int read_LCD_buttons();		// Leer botones
 unsigned long timerPulse(boolean &timeractive, unsigned long &timeactual, unsigned long &timerState, unsigned long timerPeriod);	// Temporizador
 void vigia(void);
+int Boton_Con_Rebote(void);
 
-// Variables de programa
-unsigned char UC_Etapa = 0;
-byte I_Inicio_Parada, I_Nivel, I_Bomba_Agitador, I_Desague_Manual, I_Llave_Tanque, I_Lav_Auto;
-boolean M_Agua_Fria, M_Bomba_Agitador, M_Desague, M_Agua_Caliente;
-byte M_En_Ciclo = 0;
-byte M_En_Alarma = 0;
-byte M_En_Espera = 10;
-byte M_Activar_Timer = 0;
-//unsigned int scanValue = 0;			// En libreria tiene que ser "extern"
-// Variables para Timer
-boolean M_Timer_1 = 0;
-boolean M_Timer_2 = 0;
-boolean M_Timer_3 = 0;
-unsigned long M_Time_1 = 0;
-unsigned long M_Time_2 = 0;
-unsigned long M_Time_3 = 0;
-unsigned long TIMER_00 = 0;  // Variable to hold elapsed time for Timer 0
-unsigned long TIMER_01 = 0;  // Variable to hold elapsed time for Timer 1
-unsigned long TIMER_02 = 0;  // Variable to hold elapsed time for Timer 2
-unsigned long TIMER_03 = 0;  // Variable to hold elapsed time for Timer 3
-// byte M_Latch_Inicio = 0;
 
 void setup()
 {
@@ -118,13 +139,25 @@ void setup()
 	lcd.clear();
 	lcd.print("In/Out listo... ");
 	delay(1000);
+	T_Enjuague_s = EEPROM.read(0);
+	T_Lavado_s = EEPROM.read(1);
+	T_Descarga_s = EEPROM.read(2);
+	T_Descarga = T_Descarga_s * 60000;
+	T_Enjuague = T_Enjuague_s * 60000;
+	T_Lavado = T_Lavado_s * 60000;
+	lcd.clear();
+	lcd.print("EST LA FELICIDAD");
+	lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+	lcd.print("   POR  INGER   ");
+	delay(3000);
 	lcd.clear();
 }
 
 void loop()
 {	
+	// Leer entradas
 	leer_in();							// Lee todas las entradas digitales y almacena su valor
-	
+	lcd_key = Boton_Con_Rebote();		// read the buttons
 	// Cambios de etapa
 	// Etapa 1
 	if (UC_Etapa == 0 && I_Llave_Tanque == 1 && I_Inicio_Parada == 1)
@@ -172,10 +205,15 @@ void loop()
 	{
 		UC_Etapa = 9;
 	}
-	// Etapa final
+	// Final ciclo
 	if (UC_Etapa == 9 && M_Timer_2 == 1)
 	{
 		M_Timer_2 = 0;
+		UC_Etapa = 14;
+	}
+	// Etapa final
+	if (UC_Etapa == 14 && I_Llave_Tanque == 0)
+	{
 		UC_Etapa = 0;
 		M_En_Ciclo = 0;
 	}
@@ -298,170 +336,364 @@ void loop()
 		}
 		timerPulse(M_Timer_2, M_Time_2, TIMER_02, T_Descarga);
 	}
+	// Etapa final ciclo
+	if (UC_Etapa == 14)
+	{
+		apagar_outs();
+	}
 	
+	// Teclado
+	switch (lcd_key)               // depending on which button was pushed, we perform an action
+	{
+		case btnRIGHT:
+		{
+			if (Btn_Select == 2)
+			{
+				if (Pantalla == 0)
+				{
+					T_Enjuague_s--;
+					if (T_Enjuague_s < 1)
+					{
+						T_Enjuague_s = 255;
+					}
+				}
+				if (Pantalla == 1)
+				{
+					T_Lavado_s--;
+					if (T_Lavado_s < 1)
+					{
+						T_Lavado_s = 255;
+					}
+				}
+				if (Pantalla == 2)
+				{
+					T_Descarga_s--;
+					if (T_Descarga_s < 1)
+					{
+						T_Descarga_s = 255;
+					}
+				}
+			}
+			break;
+		}
+		case btnLEFT:
+		{
+			if (Btn_Select == 2)
+			{
+				if (Pantalla == 0)
+				{
+					T_Enjuague_s++;
+					if (T_Enjuague_s > 255)
+					{
+						T_Enjuague_s = 0;
+					}
+				}
+				if (Pantalla == 1)
+				{
+					T_Lavado_s++;
+					if (T_Lavado_s > 255)
+					{
+						T_Lavado_s = 0;
+					}
+				}
+				if (Pantalla == 2)
+				{
+					T_Descarga_s++;
+					if (T_Descarga_s > 255)
+					{
+						T_Descarga_s = 0;
+					}
+				}
+			}
+			break;
+		}
+		case btnUP:
+		{
+			if (Pantalla == 2)
+			{
+				Pantalla = 0;
+			} 
+			else
+			{
+				Pantalla++;
+			}
+			break;
+		}
+		case btnDOWN:
+		{
+			if (Pantalla == 0)
+			{
+				Pantalla = 2;
+			} 
+			else
+			{
+				Pantalla--;
+			}
+			break;
+		}
+		case btnSELECT:
+		{
+			Btn_Select++;
+			if (Modo_Menu == 0 && Btn_Select == 1)	// Ingresa a menus
+			{
+				Modo_Menu = 1;
+				M_En_Espera_2 = 100;
+			}
+			if (Modo_Menu == 1 && Btn_Select == 2)	// Modifica variables
+			{
+				lcd.blink();
+			}
+			if (Modo_Menu == 1 && Btn_Select == 3)	// Guarda variables
+			{
+				lcd.noBlink();
+				if (Pantalla == 0)
+				{
+					EEPROM.write(0,T_Enjuague_s);
+				}
+				if (Pantalla == 1)
+				{
+					EEPROM.write(1,T_Lavado_s);
+				}
+				if (Pantalla == 2)
+				{
+					EEPROM.write(2,T_Descarga_s);
+				}
+			}
+			if (Modo_Menu == 1 && Btn_Select == 4)	// Sale de menus
+			{
+				Modo_Menu = 0;
+				M_En_Espera = 10;
+				Btn_Select = 0;
+			}
+			break;
+		}
+		case btnNONE:
+		{
+			
+			break;
+		}
+	}
 		
 	// Impresión en pantalla
-	switch (UC_Etapa)
+	if(Modo_Menu == 0)
+	{	
+		switch (UC_Etapa)
+		{
+			case Descarga_Manual:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("DESC. MANUAL... ");
+					M_En_Espera = UC_Etapa;
+				}
+				break;
+			}
+			case Carga_Agua_Fria_1:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("CARGANDO FRIA...");
+					M_En_Espera = UC_Etapa;
+				}
+				break;
+			}
+			case Enjuague_1:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("ENJUAGUE...     ");
+					lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+					lcd.print("TIEMPO [s]:");
+					M_En_Espera = UC_Etapa;
+				
+				}
+				lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print(M_Time_1);		
+				break;
+			}
+			case Descarga_Agua_1:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("DESCARGANDO...  ");
+					lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+					lcd.print("TIEMPO [s]:");
+					M_En_Espera = UC_Etapa;
+				}
+				lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print(M_Time_2);
+				break;
+			}
+			case Carga_Agua_Caliente:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("CARGANDO CAL... ");
+					M_En_Espera = UC_Etapa;
+				}
+				break;
+			}
+			case Lavado:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("LAVANDO...      ");
+					lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+					lcd.print("TIEMPO [s]:");
+					M_En_Espera = UC_Etapa;
+				}
+				lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print(M_Time_3);
+				break;
+			}
+			case Descarga_Agua_2:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("DESCARGANDO...  ");
+					lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+					lcd.print("TIEMPO [s]:");
+					M_En_Espera = UC_Etapa;
+				}
+				lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print(M_Time_2);
+				break;
+			}
+			case Carga_Agua_Fria_2:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("CARGANDO FRIA...");
+					M_En_Espera = UC_Etapa;
+				}
+				break;
+			}
+			case Enjuague_2:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("ENJUAGUE...     ");
+					lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+					lcd.print("TIEMPO [s]:");
+					M_En_Espera = UC_Etapa;
+				
+				}
+				lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print(M_Time_1);
+				break;
+			}
+			case Descarga_Agua_3:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("DESCARGANDO...  ");
+					lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+					lcd.print("TIEMPO [s]:");
+					M_En_Espera = UC_Etapa;
+				}
+				lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
+				lcd.print(M_Time_2);
+				break;
+			}
+			case En_Espera:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("EN ESPERA...    ");
+					M_En_Espera = UC_Etapa;
+				}
+				break;
+			}
+			case Alarma_Bomba_Agit:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("ALARMA!!!       ");
+					lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+					lcd.print("FALLA BOMBA/AGIT");
+					M_En_Espera = UC_Etapa;
+				}
+				break;
+			}
+			case Alarma_Llave_T:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("ALARMA!!!       ");
+					lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
+					lcd.print("LLAVE T. CERRADA");
+					M_En_Espera = UC_Etapa;
+				}
+				break;
+			}
+			case Final_Ciclo:
+			{
+				if(M_En_Espera != UC_Etapa)
+				{
+					lcd.clear();
+					lcd.print("CICLO TERMINADO!");
+					M_En_Espera = UC_Etapa;
+				}
+				break;
+			}
+		}
+	}
+	if(Modo_Menu == 1)
 	{
-		case Descarga_Manual:
+		switch (Pantalla)
 		{
-			if(M_En_Espera != UC_Etapa)
+			case 0:
 			{
-				lcd.clear();
-				lcd.print("DESC. MANUAL... ");
-				M_En_Espera = UC_Etapa;
+				if(M_En_Espera_2 != Pantalla)
+				{
+					lcd.clear();
+					lcd.print("Tiempo Enjuague:");
+					M_En_Espera_2 = Pantalla;
+				}
+				lcd.setCursor(0,1);
+				lcd.print(T_Enjuague_s);
+				lcd.print(" min.");
+				break;
 			}
-			break;
-		}
-		case Carga_Agua_Fria_1:
-		{
-			if(M_En_Espera != UC_Etapa)
+			case 1:
 			{
-				lcd.clear();
-				lcd.print("CARGANDO FRIA...");
-				M_En_Espera = UC_Etapa;
+				if(M_En_Espera_2 != Pantalla)
+				{
+					lcd.clear();
+					lcd.print("Tiempo Lavado:  ");
+					M_En_Espera_2 = Pantalla;
+				}
+				lcd.setCursor(0,1);
+				lcd.print(T_Lavado_s);
+				lcd.print(" min.");
+				break;
 			}
-			break;
-		}
-		case Enjuague_1:
-		{
-			if(M_En_Espera != UC_Etapa)
+			case 2:
 			{
-				lcd.clear();
-				lcd.print("ENJUAGUE...     ");
-				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
-				lcd.print("TIEMPO [s]:");
-				M_En_Espera = UC_Etapa;
-				
+				if(M_En_Espera_2 != Pantalla)
+				{
+					lcd.clear();
+					lcd.print("Tiempo Descarga:");
+					M_En_Espera_2 = Pantalla;
+				}
+				lcd.setCursor(0,1);
+				lcd.print(T_Descarga_s);
+				lcd.print(" min.");
+				break;
 			}
-			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
-			lcd.print(M_Time_1);		
-			break;
-		}
-		case Descarga_Agua_1:
-		{
-			if(M_En_Espera != UC_Etapa)
-			{
-				lcd.clear();
-				lcd.print("DESCARGANDO...  ");
-				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
-				lcd.print("TIEMPO [s]:");
-				M_En_Espera = UC_Etapa;
-			}
-			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
-			lcd.print(M_Time_2);
-			break;
-		}
-		case Carga_Agua_Caliente:
-		{
-			if(M_En_Espera != UC_Etapa)
-			{
-				lcd.clear();
-				lcd.print("CARGANDO CAL... ");
-				M_En_Espera = UC_Etapa;
-			}
-			break;
-		}
-		case Lavado:
-		{
-			if(M_En_Espera != UC_Etapa)
-			{
-				lcd.clear();
-				lcd.print("LAVANDO...      ");
-				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
-				lcd.print("TIEMPO [s]:");
-				M_En_Espera = UC_Etapa;
-			}
-			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
-			lcd.print(M_Time_3);
-			break;
-		}
-		case Descarga_Agua_2:
-		{
-			if(M_En_Espera != UC_Etapa)
-			{
-				lcd.clear();
-				lcd.print("DESCARGANDO...  ");
-				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
-				lcd.print("TIEMPO [s]:");
-				M_En_Espera = UC_Etapa;
-			}
-			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
-			lcd.print(M_Time_2);
-			break;
-		}
-		case Carga_Agua_Fria_2:
-		{
-			if(M_En_Espera != UC_Etapa)
-			{
-				lcd.clear();
-				lcd.print("CARGANDO FRIA...");
-				M_En_Espera = UC_Etapa;
-			}
-			break;
-		}
-		case Enjuague_2:
-		{
-			if(M_En_Espera != UC_Etapa)
-			{
-				lcd.clear();
-				lcd.print("ENJUAGUE...     ");
-				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
-				lcd.print("TIEMPO [s]:");
-				M_En_Espera = UC_Etapa;
-				
-			}
-			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
-			lcd.print(M_Time_1);
-			break;
-		}
-		case Descarga_Agua_3:
-		{
-			if(M_En_Espera != UC_Etapa)
-			{
-				lcd.clear();
-				lcd.print("DESCARGANDO...  ");
-				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
-				lcd.print("TIEMPO [s]:");
-				M_En_Espera = UC_Etapa;
-			}
-			lcd.setCursor(12,1);            // move cursor to second line "1" and 0 spaces over
-			lcd.print(M_Time_2);
-			break;
-		}
-		case En_Espera:
-		{
-			if(M_En_Espera != UC_Etapa)
-			{
-				lcd.clear();
-				lcd.print("EN ESPERA...    ");
-				M_En_Espera = UC_Etapa;
-			}
-			break;
-		}
-		case Alarma_Bomba_Agit:
-		{
-			if(M_En_Espera != UC_Etapa)
-			{
-				lcd.clear();
-				lcd.print("ALARMA!!!       ");
-				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
-				lcd.print("FALLA BOMBA/AGIT");
-				M_En_Espera = UC_Etapa;
-			}
-			break;
-		}
-		case Alarma_Llave_T:
-		{
-			if(M_En_Espera != UC_Etapa)
-			{
-				lcd.clear();
-				lcd.print("ALARMA!!!       ");
-				lcd.setCursor(0,1);            // move cursor to second line "1" and 0 spaces over
-				lcd.print("LLAVE T. CERRADA");
-				M_En_Espera = UC_Etapa;
-			}
-			break;
 		}
 	}
 	vigia();
@@ -633,4 +865,39 @@ int read_LCD_buttons()
 
 
 	return btnNONE;  // when all others fail, return this...
+}
+
+int Boton_Con_Rebote(void)
+{
+	aux_key_1 = read_LCD_buttons();
+	delay(85);
+	aux_key_2 = read_LCD_buttons();
+	if (aux_key_1 == aux_key_2)
+	{
+		return aux_key_2;
+	}
+	else
+	{
+		return btnNONE;
+	}
+	/*
+	if (M_Activar_Timer_2 != aux_key_1)
+	{
+		M_Timer_4 = 1;
+		M_Activar_Timer = aux_key_1;
+	}
+	timerPulse(M_Timer_4, M_Time_4, TIMER_04, T_Rebote);
+	if (M_Time_4 == T_Rebote)
+	{
+		aux_key_2 = read_LCD_buttons();
+	}
+	if (aux_key_1 == aux_key_2)
+	{
+		return aux_key_2;
+	} 
+	else
+	{
+		return btnNONE;
+	}
+	*/
 }
