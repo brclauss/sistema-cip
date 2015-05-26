@@ -1,0 +1,1 @@
+Se pretende implementar el control del proceso de lavado utilizando módulos Arduino.
